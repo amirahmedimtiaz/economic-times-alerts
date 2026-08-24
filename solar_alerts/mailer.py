@@ -85,12 +85,24 @@ def _render_summary_html(summary: str) -> str:
     items = [re.sub(r"^(?:[-*•]\s+|\d+[.)]\s+)", "", line) for line in lines]
     if len(items) > 1:
         rendered_items = "".join(
-            f'<li style="margin:0 0 9px;color:#27364d;font-size:16px;line-height:1.55">{escape(item)}</li>'
+            f'<li style="margin:0 0 9px;color:#27364d;font-size:16px;line-height:1.55">{_format_summary_inline(item)}</li>'
             for item in items
         )
         return f'<ul style="margin:0;padding:0 0 0 20px">{rendered_items}</ul>'
-    text = escape(items[0] if items else "Summary unavailable.")
+    text = _format_summary_inline(items[0] if items else "Summary unavailable.")
     return f'<p style="margin:0;color:#27364d;font-size:16px;line-height:1.6">{text}</p>'
+
+
+def _format_summary_inline(text: str) -> str:
+    """Render the small Markdown subset the summarizer is asked to use safely."""
+
+    escaped = escape(text)
+    rendered = re.sub(
+        r"\*\*(.+?)\*\*",
+        r'<strong style="font-weight:700;color:#172033">\1</strong>',
+        escaped,
+    )
+    return rendered.replace("**", "")
 
 
 @dataclass(slots=True)
