@@ -37,7 +37,11 @@ class OpenAISummarizer:
 
 Requirements:
 - Be factual and use only information present in the supplied article.
-- Use 3 concise bullet points: what happened, key numbers or entities, and why it matters.
+- Return exactly three concise plain-text lines in this format:
+  What happened: <summary>
+  Key details: <key numbers, entities, or milestones>
+  Why it matters: <business or industry relevance>
+- Do not use Markdown, bullets, asterisks, or bold markers.
 - Do not mention that you are an AI and do not invent a headline, facts, sources, or advice.
 - Keep the result below 160 words.
 

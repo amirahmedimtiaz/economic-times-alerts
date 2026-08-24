@@ -83,6 +83,9 @@ def render_html_alert(story: Story, summary: str) -> str:
 def _render_summary_html(summary: str) -> str:
     lines = [line.strip() for line in summary.strip().splitlines() if line.strip()]
     items = [re.sub(r"^(?:[-*•]\s+|\d+[.)]\s+)", "", line) for line in lines]
+    sections = [_summary_section(item) for item in items]
+    if items and all(section is not None for section in sections):
+        return "".join(section for section in sections if section is not None)
     if len(items) > 1:
         rendered_items = "".join(
             f'<li style="margin:0 0 9px;color:#27364d;font-size:16px;line-height:1.55">{_format_summary_inline(item)}</li>'
@@ -91,6 +94,30 @@ def _render_summary_html(summary: str) -> str:
         return f'<ul style="margin:0;padding:0 0 0 20px">{rendered_items}</ul>'
     text = _format_summary_inline(items[0] if items else "Summary unavailable.")
     return f'<p style="margin:0;color:#27364d;font-size:16px;line-height:1.6">{text}</p>'
+
+
+def _summary_section(item: str) -> str | None:
+    plain_item = item.replace("**", "").strip()
+    match = re.match(
+        r"^(What happened|Key details|Key numbers(?:/entities)?|Why it matters)\s*:\s*(.+)$",
+        plain_item,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    label = match.group(1).lower()
+    heading = {
+        "what happened": "What happened",
+        "key details": "Key details",
+        "key numbers": "Key details",
+        "key numbers/entities": "Key details",
+        "why it matters": "Why it matters",
+    }[label]
+    body = _format_summary_inline(match.group(2))
+    return f"""<div style="margin:0 0 16px">
+  <p style="margin:0 0 5px;color:#315d8f;font-size:13px;font-weight:700;letter-spacing:0.02em">{heading}</p>
+  <p style="margin:0;color:#27364d;font-size:16px;line-height:1.6">{body}</p>
+</div>"""
 
 
 def _format_summary_inline(text: str) -> str:
