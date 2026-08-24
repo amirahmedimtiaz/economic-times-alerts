@@ -58,7 +58,7 @@ python -m solar_alerts --watch --interval 900
 
 ## GitHub Actions deployment
 
-The repository includes `.github/workflows/renewables-alerts.yml`, which polls every 15 minutes and can also be started manually from the Actions tab. It stores `state.json` in the private repository after each run so duplicate emails are suppressed across ephemeral GitHub-hosted runners.
+The repository includes `.github/workflows/renewables-alerts.yml`, which polls every 15 minutes and can also be started manually from the Actions tab. It stores `state.json` in the repository after each run so duplicate emails are suppressed across ephemeral GitHub-hosted runners.
 
 Add these repository secrets before enabling the workflow:
 
