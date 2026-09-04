@@ -17,7 +17,10 @@ from .models import ArticleContent, Story, canonicalize_url
 
 
 LOGGER = logging.getLogger(__name__)
-ARTICLE_PATH_RE = re.compile(r"^/industry/renewables/.*/articleshow/\d+\.cms$", re.IGNORECASE)
+ARTICLE_PATH_RE = re.compile(
+    r"^/industry/(?:renewables|energy/power)/.*/articleshow/\d+\.cms/?$",
+    re.IGNORECASE,
+)
 ARTICLE_LINK_RE = re.compile(r"/articleshow/\d+\.cms(?:/)?$", re.IGNORECASE)
 SKIP_TAGS = {"script", "style", "noscript", "iframe", "svg"}
 VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
@@ -252,6 +255,7 @@ class EconomicTimesScraper:
     timeout_seconds: int = 30
     max_stories: int = 50
     session: requests.Session | None = None
+    additional_page_urls: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.session is None:
@@ -273,20 +277,42 @@ class EconomicTimesScraper:
             raise ScraperError(f"Could not fetch {url}: {exc}") from exc
         return response
 
+    def _page_urls(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys((self.page_url, *self.additional_page_urls)))
+
     def fetch_stories(self) -> list[Story]:
+        rss_stories: list[Story] = []
         try:
             response = self._get(self.rss_url)
-            stories = parse_feed(response.content, limit=self.max_stories)
-            if stories:
-                return stories
-            LOGGER.warning("RSS feed returned no in-scope stories; trying page HTML")
+            rss_stories = parse_feed(response.content, limit=self.max_stories)
+            if not rss_stories:
+                LOGGER.warning("RSS feed returned no in-scope stories; trying page HTML")
         except ScraperError as exc:
-            LOGGER.warning("RSS discovery failed: %s; trying page HTML", exc)
+            LOGGER.warning("RSS discovery failed: %s; relying on page HTML", exc)
 
-        response = self._get(self.page_url)
-        stories = parse_page(response.text, page_url=self.page_url, limit=self.max_stories)
+        page_stories: list[Story] = []
+        for page_url in self._page_urls():
+            try:
+                response = self._get(page_url)
+            except ScraperError as exc:
+                LOGGER.warning("Page discovery failed for %s: %s", page_url, exc)
+                continue
+            page_stories.extend(parse_page(response.text, page_url=page_url, limit=self.max_stories))
+
+        stories_by_key: dict[str, Story] = {}
+        for story in (*rss_stories, *page_stories):
+            existing = stories_by_key.get(story.key)
+            if existing is None or (existing.published_at is None and story.published_at is not None):
+                stories_by_key[story.key] = story
+
+        stories = list(stories_by_key.values())
+        stories.sort(
+            key=lambda story: story.published_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        stories = stories[: self.max_stories]
         if not stories:
-            raise ScraperError("Economic Times page did not contain any in-scope article links")
+            raise ScraperError("Economic Times sources did not contain any in-scope article links")
         return stories
 
     def fetch_article(self, story: Story) -> ArticleContent:

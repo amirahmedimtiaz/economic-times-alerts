@@ -1,14 +1,17 @@
 # Economic Times solar/renewables alerts
 
-This service checks the Economic Times renewables page, finds newly published stories, extracts the public article text, asks OpenAI's Responses API for a concise summary, and sends the summary plus the article link to Gmail.
+This service checks the Economic Times Solar Energy and Energy/Power pages, finds newly published stories, extracts the public article text, asks OpenAI's Responses API for a concise summary, and sends the summary plus the article link to Gmail.
 
 ## What was inspected
 
-The target page is server-rendered and currently advertises this RSS feed in its HTML:
+The target pages are server-rendered. The service uses this RSS feed plus both page listings:
 
 `https://economictimes.indiatimes.com/rssfeeds/cfmid-4005094.cms`
 
-The implementation uses that feed first because it contains titles, links, excerpts, publication times, and stable article IDs. If the feed is unavailable, it falls back to article links in the page's `.listfullDiv`; the page also exposes numbered pagination for older history. Article pages expose the summary in metadata and readable article text in `.artText`.
+- Solar Energy: `https://economictimes.indiatimes.com/industry/renewables/solar-energy`
+- Energy / Power: `https://economictimes.indiatimes.com/industry/energy/power`
+
+The implementation uses the feed as supplemental discovery because it contains titles, links, excerpts, publication times, and stable article IDs. It also fetches both page listings on every poll and merges the results, so a non-empty but incomplete feed cannot hide an article listed on either page. The pages expose numbered pagination for older history. Article pages expose the summary in metadata and readable article text in `.artText`.
 
 The scraper stays within the public Economic Times pages and does not attempt to bypass a paywall. Keep the polling interval reasonable and review the site's terms before running it continuously.
 
@@ -83,6 +86,7 @@ Example cron entry (run from this repository):
 
 See `.env.example` for all optional settings. Important defaults are:
 
+- `SOURCE_PAGE_URL` and `SOURCE_POWER_PAGE_URL` select the two monitored pages.
 - `POLL_INTERVAL_SECONDS=900`
 - `MAX_ARTICLES_PER_RUN=10`
 - `ARTICLE_MAX_CHARS=18000`

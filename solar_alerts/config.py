@@ -37,6 +37,7 @@ def _recipients(value: str | None) -> tuple[str, ...]:
 @dataclass(frozen=True, slots=True)
 class Settings:
     source_page_url: str
+    source_power_page_url: str
     source_rss_url: str
     request_timeout_seconds: int
     poll_interval_seconds: int
@@ -69,6 +70,10 @@ class Settings:
             source_page_url=os.getenv(
                 "SOURCE_PAGE_URL",
                 "https://economictimes.indiatimes.com/industry/renewables/solar-energy",
+            ).split("#", 1)[0],
+            source_power_page_url=os.getenv(
+                "SOURCE_POWER_PAGE_URL",
+                "https://economictimes.indiatimes.com/industry/energy/power",
             ).split("#", 1)[0],
             source_rss_url=os.getenv(
                 "SOURCE_RSS_URL",

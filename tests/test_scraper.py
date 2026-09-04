@@ -1,6 +1,6 @@
 from datetime import timezone
 
-from solar_alerts.scraper import parse_article, parse_feed, parse_page
+from solar_alerts.scraper import EconomicTimesScraper, parse_article, parse_feed, parse_page
 
 
 RSS = b"""<?xml version="1.0"?><rss><channel>
@@ -8,6 +8,9 @@ RSS = b"""<?xml version="1.0"?><rss><channel>
 <link>https://economictimes.indiatimes.com/industry/renewables/new-solar-story/articleshow/12345.cms?utm_source=x</link>
 <description><![CDATA[<p>Key detail.</p>]]></description>
 <pubDate>Mon, 24 Aug 2026 05:30:00 +0530</pubDate></item>
+<item><title>New power story</title>
+<link>https://economictimes.indiatimes.com/industry/energy/power/new-power-story/articleshow/54321.cms</link>
+<pubDate>Tue, 25 Aug 2026 05:30:00 +0530</pubDate></item>
 <item><title>Out of scope</title><link>https://economictimes.indiatimes.com/markets/stocks/news/out/articleshow/999.cms</link></item>
 <item><title>Duplicate</title><link>https://economictimes.indiatimes.com/industry/renewables/new-solar-story/articleshow/12345.cms</link></item>
 </channel></rss>"""
@@ -15,24 +18,70 @@ RSS = b"""<?xml version="1.0"?><rss><channel>
 
 def test_parse_feed_filters_scope_and_deduplicates() -> None:
     stories = parse_feed(RSS)
-    assert len(stories) == 1
-    assert stories[0].title == "New solar story"
-    assert stories[0].key == "articleshow:12345"
-    assert stories[0].published_at is not None
-    assert stories[0].published_at.tzinfo == timezone.utc
-    assert stories[0].excerpt == "Key detail."
+    assert len(stories) == 2
+    assert [story.key for story in stories] == ["articleshow:54321", "articleshow:12345"]
+    assert stories[1].title == "New solar story"
+    assert stories[1].published_at is not None
+    assert stories[1].published_at.tzinfo == timezone.utc
+    assert stories[1].excerpt == "Key detail."
 
 
-def test_parse_page_extracts_only_renewables_article_links() -> None:
+def test_parse_page_extracts_configured_article_sections() -> None:
     html = """
     <div class="listfullDiv"><ul>
       <li><a class="ancs" title="Solar title" href="/industry/renewables/solar/articleshow/12.cms">Solar title</a></li>
       <li><a title="Other" href="/markets/stocks/news/other/articleshow/13.cms">Other</a></li>
       <li><a href="/industry/renewables/wind/articleshow/14.cms">Wind title</a></li>
+      <li><a href="/industry/energy/power/grid/articleshow/15.cms">Power title</a></li>
     </ul></div>
     """
     stories = parse_page(html, page_url="https://economictimes.indiatimes.com/industry/renewables/solar-energy")
-    assert [story.key for story in stories] == ["articleshow:12", "articleshow:14"]
+    assert [story.key for story in stories] == ["articleshow:12", "articleshow:14", "articleshow:15"]
+
+
+class _FakeResponse:
+    def __init__(self, content: bytes | str) -> None:
+        self.content = content.encode() if isinstance(content, str) else content
+        self.text = self.content.decode()
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+class _FakeSession:
+    def __init__(self, responses: dict[str, _FakeResponse]) -> None:
+        self.headers: dict[str, str] = {}
+        self.responses = responses
+
+    def get(self, url: str, *, timeout: int) -> _FakeResponse:
+        return self.responses[url]
+
+
+def test_fetch_stories_merges_rss_and_both_page_sources() -> None:
+    solar_url = "https://economictimes.indiatimes.com/industry/renewables/solar-energy"
+    power_url = "https://economictimes.indiatimes.com/industry/energy/power"
+    power_page = '<a href="/industry/energy/power/page-only/articleshow/99999.cms">Page-only power story</a>'
+    session = _FakeSession(
+        {
+            "rss": _FakeResponse(RSS),
+            solar_url: _FakeResponse('<a href="/industry/renewables/new-solar-story/articleshow/12345.cms">Solar title</a>'),
+            power_url: _FakeResponse(power_page),
+        }
+    )
+    scraper = EconomicTimesScraper(
+        page_url=solar_url,
+        rss_url="rss",
+        session=session,
+        additional_page_urls=(power_url,),
+    )
+
+    stories = scraper.fetch_stories()
+
+    assert {story.key for story in stories} == {
+        "articleshow:12345",
+        "articleshow:54321",
+        "articleshow:99999",
+    }
 
 
 def test_parse_article_prefers_readable_article_body() -> None:
