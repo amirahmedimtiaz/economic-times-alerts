@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
 from html.parser import HTMLParser
@@ -92,15 +92,40 @@ def _parse_feed_date(value: str) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _parse_page_date(value: str) -> datetime | None:
+    value = clean_text(value)
+    if not value:
+        return None
+    value = re.sub(r"\s+IST$", "", value, flags=re.IGNORECASE)
+    try:
+        parsed = datetime.strptime(value, "%b %d, %Y, %I:%M %p")
+    except ValueError:
+        return None
+    india_timezone = timezone(timedelta(hours=5, minutes=30))
+    return parsed.replace(tzinfo=india_timezone).astimezone(timezone.utc)
+
+
 class _PageLinkParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self._anchor: dict[str, str] | None = None
         self._anchor_text: list[str] = []
-        self.links: list[tuple[str, str]] = []
+        self._time_active = False
+        self._time_parts: list[str] = []
+        self._time_value = ""
+        self._time_link_index: int | None = None
+        self.links: list[tuple[str, str, datetime | None]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() != "a" or self._anchor is not None:
+        tag = tag.lower()
+        if tag == "time" and self.links and not self._time_active and self.links[-1][2] is None:
+            attr = {key.lower(): value or "" for key, value in attrs}
+            self._time_active = True
+            self._time_parts = []
+            self._time_value = attr.get("data-time", "")
+            self._time_link_index = len(self.links) - 1
+            return
+        if tag != "a" or self._anchor is not None:
             return
         self._anchor = {key.lower(): value or "" for key, value in attrs}
         self._anchor_text = []
@@ -108,16 +133,29 @@ class _PageLinkParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self._anchor is not None:
             self._anchor_text.append(data)
+        if self._time_active:
+            self._time_parts.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() != "a" or self._anchor is None:
+        tag = tag.lower()
+        if tag == "time" and self._time_active:
+            if self._time_link_index is not None:
+                href, title, _ = self.links[self._time_link_index]
+                value = self._time_value or " ".join(self._time_parts)
+                self.links[self._time_link_index] = (href, title, _parse_page_date(value))
+            self._time_active = False
+            self._time_parts = []
+            self._time_value = ""
+            self._time_link_index = None
+            return
+        if tag != "a" or self._anchor is None:
             return
         href = unescape(self._anchor.get("href", "")).strip()
         title = clean_text(self._anchor.get("title", ""))
         text = clean_text(" ".join(self._anchor_text))
         if not title or title.lower() == "title":
             title = text
-        self.links.append((href, title))
+        self.links.append((href, title, None))
         self._anchor = None
         self._anchor_text = []
 
@@ -129,14 +167,21 @@ def parse_page(content: str, *, page_url: str, limit: int = 50) -> list[Story]:
 
     stories: list[Story] = []
     seen: set[str] = set()
-    for href, title in parser.links:
+    for href, title, published_at in parser.links:
         url = canonicalize_url(urljoin(page_url, href))
         if not ARTICLE_LINK_RE.search(urlsplit(url).path):
             continue
         if not ARTICLE_PATH_RE.match(urlsplit(url).path) or url in seen:
             continue
         seen.add(url)
-        stories.append(Story(title=title or url.rsplit("/", 1)[-1], url=url, source="page"))
+        stories.append(
+            Story(
+                title=title or url.rsplit("/", 1)[-1],
+                url=url,
+                published_at=published_at,
+                source="page",
+            )
+        )
         if len(stories) >= limit:
             break
     return stories

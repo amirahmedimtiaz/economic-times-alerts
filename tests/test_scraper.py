@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import datetime, timezone
 
 from solar_alerts.scraper import EconomicTimesScraper, parse_article, parse_feed, parse_page
 
@@ -33,10 +33,12 @@ def test_parse_page_extracts_configured_article_sections() -> None:
       <li><a title="Other" href="/markets/stocks/news/other/articleshow/13.cms">Other</a></li>
       <li><a href="/industry/renewables/wind/articleshow/14.cms">Wind title</a></li>
       <li><a href="/industry/energy/power/grid/articleshow/15.cms">Power title</a></li>
+      <time class="date-format" data-time="Aug 25, 2026, 05:30 PM IST">Aug 25, 2026, 05:30 PM IST</time>
     </ul></div>
     """
     stories = parse_page(html, page_url="https://economictimes.indiatimes.com/industry/renewables/solar-energy")
     assert [story.key for story in stories] == ["articleshow:12", "articleshow:14", "articleshow:15"]
+    assert stories[2].published_at == datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 
 
 class _FakeResponse:
@@ -60,7 +62,10 @@ class _FakeSession:
 def test_fetch_stories_merges_rss_and_both_page_sources() -> None:
     solar_url = "https://economictimes.indiatimes.com/industry/renewables/solar-energy"
     power_url = "https://economictimes.indiatimes.com/industry/energy/power"
-    power_page = '<a href="/industry/energy/power/page-only/articleshow/99999.cms">Page-only power story</a>'
+    power_page = """
+    <a href="/industry/energy/power/page-only/articleshow/99999.cms">Page-only power story</a>
+    <time data-time="Aug 25, 2026, 06:30 PM IST">Aug 25, 2026, 06:30 PM IST</time>
+    """
     session = _FakeSession(
         {
             "rss": _FakeResponse(RSS),
