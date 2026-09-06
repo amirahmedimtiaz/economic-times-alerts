@@ -38,7 +38,7 @@ def run_once(
         rss_url=settings.source_rss_url,
         timeout_seconds=settings.request_timeout_seconds,
         max_stories=max(settings.max_articles_per_run, limit or 0, 50),
-        additional_page_urls=(settings.source_power_page_url,),
+        additional_page_urls=(settings.source_power_page_url, settings.source_renewables_page_url),
     )
     stories = scraper.fetch_stories()
     if limit is not None:
@@ -132,9 +132,10 @@ def _run_cli(args: argparse.Namespace) -> int:
 
     interval = args.interval or settings.poll_interval_seconds
     LOGGER.info(
-        "Watching %s and %s every %d seconds",
+        "Watching %s, %s, and %s every %d seconds",
         settings.source_page_url,
         settings.source_power_page_url,
+        settings.source_renewables_page_url,
         interval,
     )
     while True:

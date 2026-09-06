@@ -59,25 +59,29 @@ class _FakeSession:
         return self.responses[url]
 
 
-def test_fetch_stories_merges_rss_and_both_page_sources() -> None:
+def test_fetch_stories_merges_rss_and_all_page_sources() -> None:
     solar_url = "https://economictimes.indiatimes.com/industry/renewables/solar-energy"
     power_url = "https://economictimes.indiatimes.com/industry/energy/power"
+    renewables_url = "https://economictimes.indiatimes.com/industry/renewables"
     power_page = """
     <a href="/industry/energy/power/page-only/articleshow/99999.cms">Page-only power story</a>
     <time data-time="Aug 25, 2026, 06:30 PM IST">Aug 25, 2026, 06:30 PM IST</time>
     """
+    renewables_page = '<a href="/industry/renewables/page-only/articleshow/88888.cms">Page-only renewables story</a>'
     session = _FakeSession(
         {
             "rss": _FakeResponse(RSS),
             solar_url: _FakeResponse('<a href="/industry/renewables/new-solar-story/articleshow/12345.cms">Solar title</a>'),
             power_url: _FakeResponse(power_page),
+            renewables_url: _FakeResponse(renewables_page),
         }
     )
     scraper = EconomicTimesScraper(
         page_url=solar_url,
         rss_url="rss",
         session=session,
-        additional_page_urls=(power_url,),
+        max_stories=2,
+        additional_page_urls=(power_url, renewables_url),
     )
 
     stories = scraper.fetch_stories()
@@ -86,6 +90,7 @@ def test_fetch_stories_merges_rss_and_both_page_sources() -> None:
         "articleshow:12345",
         "articleshow:54321",
         "articleshow:99999",
+        "articleshow:88888",
     }
 
 

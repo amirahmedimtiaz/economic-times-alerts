@@ -350,12 +350,14 @@ class EconomicTimesScraper:
             if existing is None or (existing.published_at is None and story.published_at is not None):
                 stories_by_key[story.key] = story
 
+        # Apply the limit independently to each source above, then retain the
+        # merged set. A single global cap would let a complete RSS/page source
+        # crowd out page-only stories from another monitored listing.
         stories = list(stories_by_key.values())
         stories.sort(
             key=lambda story: story.published_at or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
         )
-        stories = stories[: self.max_stories]
         if not stories:
             raise ScraperError("Economic Times sources did not contain any in-scope article links")
         return stories
