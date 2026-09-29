@@ -13,7 +13,7 @@ class SummarizationError(RuntimeError):
 @dataclass(slots=True)
 class OpenAISummarizer:
     api_key: str
-    model: str = "gpt-5.6-luna"
+    model: str = "gpt-6-luna"
     reasoning_effort: str = "max"
     max_input_chars: int = 18_000
     max_output_tokens: int = 700

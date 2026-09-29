@@ -32,11 +32,11 @@ The scraper stays within the public Economic Times pages and does not attempt to
 
    ```dotenv
    OPENAI_API_KEY=sk-...
-   OPENAI_MODEL=gpt-5.6-luna
+   OPENAI_MODEL=gpt-6-luna
    OPENAI_REASONING_EFFORT=max
    ```
 
-   ChatGPT Plus and the API platform use separate billing systems. An API key and API billing setup are required for the background summarizer; the Plus subscription itself is not an API credential. See the [official billing guidance](https://help.openai.com/en/articles/8156019-is-api-usage-included-in-chatgpt-subscriptions-even-if-i-have-a-paid-chatgpt-account) and the [GPT-5.6 Luna model documentation](https://developers.openai.com/api/docs/models/gpt-5.6-luna).
+   ChatGPT Plus and the API platform use separate billing systems. An API key and API billing setup are required for the background summarizer; the Plus subscription itself is not an API credential. See the [official billing guidance](https://help.openai.com/en/articles/8156019-is-api-usage-included-in-chatgpt-subscriptions-even-if-i-have-a-paid-chatgpt-account) and the [GPT-6 Luna model documentation](https://developers.openai.com/api/docs/models/gpt-6-luna).
 
 ## Run it
 
