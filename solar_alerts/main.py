@@ -62,7 +62,8 @@ def run_once(
 
     candidates = [story for story in stories if not state.has_seen(story.key)]
     candidates.sort(
-        key=lambda story: story.published_at or datetime.min.replace(tzinfo=timezone.utc)
+        key=lambda story: story.published_at or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
     )
     candidates = candidates[: settings.max_articles_per_run]
     if not candidates:

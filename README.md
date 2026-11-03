@@ -64,7 +64,7 @@ python -m solar_alerts --watch --interval 900
 
 ## GitHub Actions deployment
 
-The repository includes `.github/workflows/renewables-alerts.yml`, which polls every 15 minutes and can also be started manually from the Actions tab. It stores `state.json` in the repository after each run so duplicate emails are suppressed across ephemeral GitHub-hosted runners.
+The repository includes `.github/workflows/renewables-alerts.yml`, which requests a poll every 5 minutes and can also be started manually from the Actions tab. It stores `state.json` in the repository after each run so duplicate emails are suppressed across ephemeral GitHub-hosted runners.
 
 Add these repository secrets before enabling the workflow:
 
@@ -75,9 +75,9 @@ gh secret set EMAIL_RECEIVER --repo OWNER/REPO
 gh secret set OPENAI_API_KEY --repo OWNER/REPO
 ```
 
-Each command reads the value interactively. The Gmail and OpenAI secrets are never committed to the repository. Scheduled workflows can be delayed by GitHub during periods of high demand; use `--watch` locally if a tighter cadence is important.
+Each command reads the value interactively. The Gmail and OpenAI secrets are never committed to the repository. Scheduled workflows can be delayed or skipped by GitHub. On Amir’s Mac, the `com.amir.economic-times-alerts-trigger` launch agent additionally dispatches the same GitHub workflow every five minutes while the Mac is awake and online. GitHub workflow concurrency serializes the senders and their shared state. This fallback cannot run while the Mac is asleep or offline, and neither trigger guarantees immediate delivery. Its log is `~/Library/Logs/economic-times-alerts-trigger.log`.
 
-The program sends one email per new story and marks an article as seen only after summarization and email delivery succeed. Failed items remain eligible for retry on the next poll.
+The program prioritizes the newest dated unseen stories ahead of older and undated backlog items. It sends one email per new story and marks an article as seen only after summarization and email delivery succeed. Failed items remain eligible for retry on the next poll.
 
 Example cron entry (run from this repository):
 

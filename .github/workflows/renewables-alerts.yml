@@ -2,7 +2,7 @@ name: Economic Times energy, infrastructure and policy alerts
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
