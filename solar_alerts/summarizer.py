@@ -53,7 +53,7 @@ Article text:
 """
         try:
             assert self.client is not None
-            response = self.client.responses.create(
+            request = dict(
                 model=self.model,
                 instructions="You are a concise, careful business-news editor.",
                 input=prompt,
@@ -62,6 +62,11 @@ Article text:
                 store=False,
                 safety_identifier=hashlib.sha256(story.key.encode("utf-8")).hexdigest()[:32],
             )
+            response = self.client.responses.create(**request)
+            details = getattr(response, "incomplete_details", None)
+            if not getattr(response, "output_text", "") and getattr(details, "reason", None) == "max_output_tokens":
+                request["max_output_tokens"] = self.max_output_tokens * 4
+                response = self.client.responses.create(**request)
         except Exception as exc:
             raise SummarizationError(f"OpenAI summarization failed for {story.key}: {exc}") from exc
 
