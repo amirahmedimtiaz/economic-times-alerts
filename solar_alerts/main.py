@@ -38,7 +38,7 @@ def run_once(
         rss_url=settings.source_rss_url,
         timeout_seconds=settings.request_timeout_seconds,
         max_stories=max(settings.max_articles_per_run, limit or 0, 50),
-        additional_page_urls=(settings.source_power_page_url, settings.source_renewables_page_url),
+        additional_page_urls=(settings.source_power_page_url, settings.source_renewables_page_url, settings.source_infrastructure_page_url),
     )
     stories = scraper.fetch_stories()
     if limit is not None:
@@ -105,7 +105,7 @@ def run_once(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Email AI summaries of new Economic Times renewables stories.")
+    parser = argparse.ArgumentParser(description="Email AI summaries of new Economic Times energy and infrastructure stories.")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--watch", action="store_true", help="Keep polling instead of running once")
     mode.add_argument("--once", action="store_true", help="Run one poll (the default)")
@@ -132,10 +132,11 @@ def _run_cli(args: argparse.Namespace) -> int:
 
     interval = args.interval or settings.poll_interval_seconds
     LOGGER.info(
-        "Watching %s, %s, and %s every %d seconds",
+        "Watching %s, %s, %s, and %s every %d seconds",
         settings.source_page_url,
         settings.source_power_page_url,
         settings.source_renewables_page_url,
+        settings.source_infrastructure_page_url,
         interval,
     )
     while True:

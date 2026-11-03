@@ -1,18 +1,19 @@
-# Economic Times solar/renewables/energy alerts
+# Economic Times energy and infrastructure alerts
 
-This service checks the Economic Times Solar Energy, Energy/Power, and Renewables pages, finds newly published stories, extracts the public article text, asks OpenAI's Responses API for a concise summary, and sends the summary plus the article link to Gmail.
+This service checks the Economic Times Solar Energy, Energy/Power, Renewables, and Infrastructure pages, finds stories, extracts the public article text, asks OpenAI's Responses API for a concise summary, and sends the summary plus the article link to Gmail.
 
 ## What was inspected
 
-The target pages are server-rendered. The service uses this RSS feed plus all three page listings:
+The target pages are server-rendered. The service uses this RSS feed plus all four page listings:
 
 `https://economictimes.indiatimes.com/rssfeeds/cfmid-4005094.cms`
 
 - Solar Energy: `https://economictimes.indiatimes.com/industry/renewables/solar-energy`
 - Energy / Power: `https://economictimes.indiatimes.com/industry/energy/power`
 - Renewables: `https://economictimes.indiatimes.com/industry/renewables`
+- Infrastructure: `https://economictimes.indiatimes.com/news/economy/infrastructure`
 
-The implementation uses the feed as supplemental discovery because it contains titles, links, excerpts, publication times, and stable article IDs. It also fetches all three page listings on every poll and merges the results, so a non-empty but incomplete feed cannot hide an article listed on any monitored page. The pages expose numbered pagination for older history. Article pages expose the summary in metadata and readable article text in `.artText`.
+The implementation uses the feed as supplemental discovery because it contains titles, links, excerpts, publication times, and stable article IDs. It also fetches all four page listings on every poll and merges the results, so a non-empty but incomplete feed cannot hide an article listed on any monitored page. Article pages expose the summary in metadata and readable article text in `.artText`.
 
 The scraper stays within the public Economic Times pages and does not attempt to bypass a paywall. Keep the polling interval reasonable and review the site's terms before running it continuously.
 
@@ -46,7 +47,7 @@ First, verify discovery without sending email or changing state:
 python -m solar_alerts --dry-run
 ```
 
-The first real run creates `state.json` and baselines the current feed without sending the existing stories. This prevents a first-run inbox flood. To intentionally alert on the current stories, use `--notify-current`.
+The first real run creates `state.json` and baselines the current listings without sending the existing stories. This prevents a first-run inbox flood. To intentionally alert on the current stories, use `--notify-current`. When a new listing is added to an already initialized deployment, its currently listed stories are eligible for alerts, subject to the per-run limit and deduplication.
 
 For a single poll, suitable for cron:
 
@@ -87,7 +88,7 @@ Example cron entry (run from this repository):
 
 See `.env.example` for all optional settings. Important defaults are:
 
-- `SOURCE_PAGE_URL`, `SOURCE_POWER_PAGE_URL`, and `SOURCE_RENEWABLES_PAGE_URL` select the three monitored pages.
+- `SOURCE_PAGE_URL`, `SOURCE_POWER_PAGE_URL`, `SOURCE_RENEWABLES_PAGE_URL`, and `SOURCE_INFRASTRUCTURE_PAGE_URL` select the four monitored pages.
 - `POLL_INTERVAL_SECONDS=900`
 - `MAX_ARTICLES_PER_RUN=10`
 - `ARTICLE_MAX_CHARS=18000`

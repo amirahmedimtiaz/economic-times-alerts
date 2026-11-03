@@ -1,4 +1,4 @@
-name: Economic Times renewables alerts
+name: Economic Times energy and infrastructure alerts
 
 on:
   schedule:
@@ -41,6 +41,7 @@ jobs:
           SOURCE_PAGE_URL: https://economictimes.indiatimes.com/industry/renewables/solar-energy
           SOURCE_POWER_PAGE_URL: https://economictimes.indiatimes.com/industry/energy/power
           SOURCE_RENEWABLES_PAGE_URL: https://economictimes.indiatimes.com/industry/renewables
+          SOURCE_INFRASTRUCTURE_PAGE_URL: https://economictimes.indiatimes.com/news/economy/infrastructure
           STATE_FILE: state.json
         run: python -m solar_alerts --once
 
