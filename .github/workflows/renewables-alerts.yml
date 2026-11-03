@@ -37,7 +37,7 @@ jobs:
           EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: gpt-6-luna
-          OPENAI_REASONING_EFFORT: max
+          OPENAI_REASONING_EFFORT: medium
           SOURCE_PAGE_URL: https://economictimes.indiatimes.com/industry/renewables/solar-energy
           SOURCE_POWER_PAGE_URL: https://economictimes.indiatimes.com/industry/energy/power
           SOURCE_RENEWABLES_PAGE_URL: https://economictimes.indiatimes.com/industry/renewables

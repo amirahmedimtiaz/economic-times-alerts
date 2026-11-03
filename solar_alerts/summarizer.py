@@ -14,7 +14,7 @@ class SummarizationError(RuntimeError):
 class OpenAISummarizer:
     api_key: str
     model: str = "gpt-6-luna"
-    reasoning_effort: str = "max"
+    reasoning_effort: str = "medium"
     max_input_chars: int = 18_000
     max_output_tokens: int = 700
     client: object | None = None

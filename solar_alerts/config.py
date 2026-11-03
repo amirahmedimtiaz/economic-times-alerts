@@ -108,7 +108,7 @@ class Settings:
             email_smtp_ssl=_env_bool("EMAIL_SMTP_SSL", True),
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-6-luna").strip(),
-            openai_reasoning_effort=os.getenv("OPENAI_REASONING_EFFORT", "max").strip().lower(),
+            openai_reasoning_effort=os.getenv("OPENAI_REASONING_EFFORT", "medium").strip().lower(),
         )
 
     def validate(self, *, require_email: bool = True, require_openai: bool = True) -> None:
