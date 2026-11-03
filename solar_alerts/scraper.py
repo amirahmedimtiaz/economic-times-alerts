@@ -18,7 +18,7 @@ from .models import ArticleContent, Story, canonicalize_url
 
 LOGGER = logging.getLogger(__name__)
 ARTICLE_PATH_RE = re.compile(
-    r"^/(?:industry/(?:renewables|energy/power)|news/economy/infrastructure)/.*/articleshow/\d+\.cms/?$",
+    r"^/(?:industry/(?:renewables|energy/power)|news/economy/(?:infrastructure|policy))/.*/articleshow/\d+\.cms/?$",
     re.IGNORECASE,
 )
 ARTICLE_LINK_RE = re.compile(r"/articleshow/\d+\.cms(?:/)?$", re.IGNORECASE)

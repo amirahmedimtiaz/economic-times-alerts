@@ -23,3 +23,24 @@ def test_default_poll_discovers_infrastructure_listing(monkeypatch, tmp_path, ca
 
     assert result.discovered == 1
     assert "New road" in capsys.readouterr().out
+
+
+def test_default_poll_discovers_policy_listing(monkeypatch, tmp_path, capsys):
+    policy_url = "https://economictimes.indiatimes.com/news/economy/policy"
+
+    class Response:
+        content = b"<rss><channel></channel></rss>"
+        text = '<a href="/news/economy/policy/new-policy/articleshow/654321.cms">New policy</a>'
+
+    def get(self, url):
+        response = Response()
+        if url != policy_url:
+            response.text = ""
+        return response
+
+    monkeypatch.setattr(EconomicTimesScraper, "_get", get)
+    monkeypatch.setenv("ENV_FILE", str(tmp_path / "missing.env"))
+    result = run_once(Settings.from_env(tmp_path), dry_run=True)
+
+    assert result.discovered == 1
+    assert "New policy" in capsys.readouterr().out

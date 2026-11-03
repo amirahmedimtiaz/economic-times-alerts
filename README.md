@@ -1,10 +1,10 @@
-# Economic Times energy and infrastructure alerts
+# Economic Times energy, infrastructure, and policy alerts
 
-This service checks the Economic Times Solar Energy, Energy/Power, Renewables, and Infrastructure pages, finds stories, extracts the public article text, asks OpenAI's Responses API for a concise summary, and sends the summary plus the article link to Gmail.
+This service checks the Economic Times Solar Energy, Energy/Power, Renewables, Infrastructure, and Policy pages, finds stories, extracts the public article text, asks OpenAI's Responses API for a concise summary, and sends the summary plus the article link to Gmail.
 
 ## What was inspected
 
-The target pages are server-rendered. The service uses this RSS feed plus all four page listings:
+The target pages are server-rendered. The service uses this RSS feed plus all five page listings:
 
 `https://economictimes.indiatimes.com/rssfeeds/cfmid-4005094.cms`
 
@@ -12,8 +12,9 @@ The target pages are server-rendered. The service uses this RSS feed plus all fo
 - Energy / Power: `https://economictimes.indiatimes.com/industry/energy/power`
 - Renewables: `https://economictimes.indiatimes.com/industry/renewables`
 - Infrastructure: `https://economictimes.indiatimes.com/news/economy/infrastructure`
+- Policy: `https://economictimes.indiatimes.com/news/economy/policy`
 
-The implementation uses the feed as supplemental discovery because it contains titles, links, excerpts, publication times, and stable article IDs. It also fetches all four page listings on every poll and merges the results, so a non-empty but incomplete feed cannot hide an article listed on any monitored page. Article pages expose the summary in metadata and readable article text in `.artText`.
+The implementation uses the feed as supplemental discovery because it contains titles, links, excerpts, publication times, and stable article IDs. It also fetches all five page listings on every poll and merges the results, so a non-empty but incomplete feed cannot hide an article listed on any monitored page. Article pages expose the summary in metadata and readable article text in `.artText`.
 
 The scraper stays within the public Economic Times pages and does not attempt to bypass a paywall. Keep the polling interval reasonable and review the site's terms before running it continuously.
 
@@ -88,7 +89,7 @@ Example cron entry (run from this repository):
 
 See `.env.example` for all optional settings. Important defaults are:
 
-- `SOURCE_PAGE_URL`, `SOURCE_POWER_PAGE_URL`, `SOURCE_RENEWABLES_PAGE_URL`, and `SOURCE_INFRASTRUCTURE_PAGE_URL` select the four monitored pages.
+- `SOURCE_PAGE_URL`, `SOURCE_POWER_PAGE_URL`, `SOURCE_RENEWABLES_PAGE_URL`, `SOURCE_INFRASTRUCTURE_PAGE_URL`, and `SOURCE_POLICY_PAGE_URL` select the five monitored pages.
 - `POLL_INTERVAL_SECONDS=900`
 - `MAX_ARTICLES_PER_RUN=10`
 - `ARTICLE_MAX_CHARS=18000`
