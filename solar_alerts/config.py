@@ -102,7 +102,7 @@ class Settings:
             email_sender=os.getenv("EMAIL_SENDER", "").strip(),
             email_password=os.getenv("EMAIL_PASSWORD", ""),
             email_receivers=_recipients(os.getenv("EMAIL_RECEIVER", "")),
-            email_subject_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "[ET Solar]").strip(),
+            email_subject_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "").strip(),
             email_smtp_host=os.getenv("EMAIL_SMTP_HOST", "smtp.gmail.com").strip(),
             email_smtp_port=_env_int("EMAIL_SMTP_PORT", 465),
             email_smtp_ssl=_env_bool("EMAIL_SMTP_SSL", True),

@@ -112,3 +112,13 @@ def test_parse_article_prefers_readable_article_body() -> None:
     assert article.summary == "A short summary."
     assert "First paragraph" in article.body
     assert article.author == "ET Bureau"
+
+
+def test_duplicate_story_preserves_listing_sources_and_rss_excerpt() -> None:
+    solar = 'https://economictimes.indiatimes.com/industry/renewables/solar-energy'
+    renewables = 'https://economictimes.indiatimes.com/industry/renewables'
+    listing = '<a href="/industry/renewables/new-solar-story/articleshow/12345.cms">Solar title</a>'
+    scraper = EconomicTimesScraper(solar, 'rss', session=_FakeSession({'rss': _FakeResponse(RSS), solar: _FakeResponse(listing), renewables: _FakeResponse(listing)}), additional_page_urls=(renewables,))
+    story = next(s for s in scraper.fetch_stories() if s.key == 'articleshow:12345')
+    assert story.source_pages == (solar, renewables)
+    assert story.excerpt == 'Key detail.'

@@ -44,3 +44,23 @@ def test_default_poll_discovers_policy_listing(monkeypatch, tmp_path, capsys):
 
     assert result.discovered == 1
     assert "New policy" in capsys.readouterr().out
+
+
+def test_unreadable_article_sends_link_only_without_summarizer(monkeypatch, tmp_path):
+    from solar_alerts.models import Story, ArticleContent
+    from solar_alerts.mailer import GmailMailer
+    from solar_alerts.summarizer import OpenAISummarizer
+    from solar_alerts.state import StateStore
+    story = Story('Road', 'https://economictimes.indiatimes.com/news/economy/infrastructure/x/articleshow/1.cms')
+    monkeypatch.setattr(EconomicTimesScraper, 'fetch_stories', lambda self: [story])
+    monkeypatch.setattr(EconomicTimesScraper, 'fetch_article', lambda self, story: ArticleContent(story.title, '', ''))
+    monkeypatch.setattr(OpenAISummarizer, '__post_init__', lambda self: None)
+    monkeypatch.setattr(OpenAISummarizer, 'summarize', lambda *args: (_ for _ in ()).throw(AssertionError('must not summarize empty text')))
+    sent = []
+    monkeypatch.setattr(GmailMailer, 'send_alert', lambda self, story, summary: sent.append(summary))
+    monkeypatch.setenv('ENV_FILE', str(tmp_path / 'missing.env'))
+    state = StateStore(tmp_path / 'state.json'); state.initialize([]); state.save()
+    result = run_once(Settings.from_env(tmp_path))
+    assert result.sent == 1 and result.failed == 0
+    assert 'unavailable' in sent[0].lower()
+    assert StateStore.load(tmp_path / 'state.json').has_seen(story.key)

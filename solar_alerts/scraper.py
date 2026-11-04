@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
@@ -180,6 +180,7 @@ def parse_page(content: str, *, page_url: str, limit: int = 50) -> list[Story]:
                 url=url,
                 published_at=published_at,
                 source="page",
+                source_pages=(page_url,),
             )
         )
         if len(stories) >= limit:
@@ -347,8 +348,13 @@ class EconomicTimesScraper:
         stories_by_key: dict[str, Story] = {}
         for story in (*rss_stories, *page_stories):
             existing = stories_by_key.get(story.key)
-            if existing is None or (existing.published_at is None and story.published_at is not None):
+            if existing is None:
                 stories_by_key[story.key] = story
+            else:
+                preferred = story if existing.published_at is None and story.published_at is not None else existing
+                stories_by_key[story.key] = replace(preferred,
+                    source_pages=tuple(dict.fromkeys((*existing.source_pages, *story.source_pages))),
+                    excerpt=existing.excerpt or story.excerpt)
 
         # Apply the limit independently to each source above, then retain the
         # merged set. A single global cap would let a complete RSS/page source
@@ -369,4 +375,5 @@ class EconomicTimesScraper:
             return article
         if story.excerpt:
             return ArticleContent(title=story.title, summary=story.excerpt, body=story.excerpt)
-        raise ScraperError(f"Could not extract readable content from {story.url}")
+        LOGGER.warning("No readable article text or excerpt for %s; sending link only", story.key)
+        return article

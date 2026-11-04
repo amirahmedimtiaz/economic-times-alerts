@@ -24,7 +24,7 @@ def render_text_alert(story: Story, summary: str) -> str:
             f"Published: {_published_label(story.published_at)}",
             f"Source: {story.canonical_url}",
             "",
-            "AI summary:",
+            "Article availability:" if summary.startswith("Article text and summary are unavailable.") else "AI summary:",
             summary.strip(),
             "",
             f"Read the article: {story.canonical_url}",
@@ -32,11 +32,30 @@ def render_text_alert(story: Story, summary: str) -> str:
     )
 
 
+def _story_sections(story: Story) -> str:
+    labels = {
+        "/industry/renewables/solar-energy": "Solar Energy",
+        "/industry/energy/power": "Energy / Power",
+        "/industry/renewables": "Renewables",
+        "/news/economy/infrastructure": "Infrastructure",
+        "/news/economy/policy": "Policy",
+    }
+    from urllib.parse import urlsplit
+    sections = [labels[urlsplit(page).path.rstrip("/")] for page in story.source_pages if urlsplit(page).path.rstrip("/") in labels]
+    if not sections:
+        path = urlsplit(story.canonical_url).path
+        sections = [label for prefix, label in labels.items() if path.startswith(prefix + "/")][:1]
+    return ", ".join(dict.fromkeys(sections)) or "News"
+
+
 def render_html_alert(story: Story, summary: str) -> str:
     summary_html = _render_summary_html(summary)
     title = escape(story.title)
     url = escape(story.canonical_url, quote=True)
     published = escape(_published_label(story.published_at))
+    section = escape(_story_sections(story))
+    summary_label = "Article availability" if summary.startswith("Article text and summary are unavailable.") else "AI summary"
+    footer = "The source article remains the authority." if summary_label == "Article availability" else "Automated alert with an AI-generated summary. The source article remains the authority."
     return f"""<!doctype html>
 <html lang="en">
   <body style="margin:0;padding:0;background:#f4f6f8;color:#172033;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-font-smoothing:antialiased">
@@ -47,7 +66,7 @@ def render_html_alert(story: Story, summary: str) -> str:
           <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border:1px solid #e5e9ef;border-radius:14px;overflow:hidden">
             <tr>
               <td style="padding:22px 28px 20px;background:#13223a">
-                <p style="margin:0 0 7px;color:#9fdbff;font-size:12px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase">Economic Times · Renewables</p>
+                <p style="margin:0 0 7px;color:#9fdbff;font-size:12px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase">Economic Times · {section}</p>
                 <p style="margin:0;color:#ffffff;font-size:18px;font-weight:700;line-height:1.3">New story alert</p>
               </td>
             </tr>
@@ -57,7 +76,7 @@ def render_html_alert(story: Story, summary: str) -> str:
                 <p style="margin:0 0 26px;color:#667085;font-size:14px;line-height:1.5">Published {published}</p>
 
                 <div style="margin:0 0 24px;padding:18px 20px;background:#f7faff;border-left:4px solid #1f7ae0;border-radius:0 8px 8px 0">
-                  <p style="margin:0 0 11px;color:#315d8f;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">AI summary</p>
+                  <p style="margin:0 0 11px;color:#315d8f;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">{summary_label}</p>
                   {summary_html}
                 </div>
 
@@ -69,7 +88,7 @@ def render_html_alert(story: Story, summary: str) -> str:
                   </tr>
                 </table>
 
-                <p style="margin:26px 0 0;color:#8a94a6;font-size:12px;line-height:1.5">Automated alert with an AI-generated summary. The source article remains the authority.</p>
+                <p style="margin:26px 0 0;color:#8a94a6;font-size:12px;line-height:1.5">{footer}</p>
               </td>
             </tr>
           </table>
@@ -137,7 +156,7 @@ class GmailMailer:
     sender: str
     password: str
     receivers: tuple[str, ...]
-    subject_prefix: str = "[ET Solar]"
+    subject_prefix: str = ""
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 465
     smtp_ssl: bool = True
@@ -147,7 +166,7 @@ class GmailMailer:
         message = EmailMessage()
         message["From"] = self.sender
         message["To"] = ", ".join(self.receivers)
-        message["Subject"] = f"{self.subject_prefix} {story.title}".strip()
+        message["Subject"] = f"{self.subject_prefix or f'[ET {_story_sections(story)}]'} {story.title}".strip()
         message.set_content(render_text_alert(story, summary))
         message.add_alternative(render_html_alert(story, summary), subtype="html")
 

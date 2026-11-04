@@ -18,3 +18,19 @@ def test_alert_renderers_escape_and_include_link() -> None:
     assert "Key details</p>" in html
     assert "Why it matters</p>" in html
     assert "**What happened:**" not in html
+
+
+def test_subject_and_header_use_listing_pages(monkeypatch) -> None:
+    from solar_alerts.mailer import GmailMailer
+    messages = []
+    class SMTP:
+        def __init__(self, *args, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def login(self, *args): pass
+        def send_message(self, message): messages.append(message)
+    monkeypatch.setattr('solar_alerts.mailer.smtplib.SMTP_SSL', SMTP)
+    story = Story(title='Road', url='https://economictimes.indiatimes.com/news/economy/infrastructure/x/articleshow/1.cms', source_pages=('https://economictimes.indiatimes.com/news/economy/infrastructure',))
+    GmailMailer('a@example.com', 'pw', ('b@example.com',)).send_alert(story, 'summary')
+    assert messages[0]['Subject'] == '[ET Infrastructure] Road'
+    assert 'Economic Times · Infrastructure' in render_html_alert(story, 'summary')

@@ -92,7 +92,8 @@ def run_once(
     for story in candidates:
         try:
             article = scraper.fetch_article(story)
-            summary = summarizer.summarize(story, article)
+            summary = (summarizer.summarize(story, article) if (article.body or article.summary or story.excerpt).strip()
+                       else "Article text and summary are unavailable. Open the article link for details.")
             mailer.send_alert(story, summary)
         except Exception as exc:
             failed += 1

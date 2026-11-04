@@ -28,6 +28,7 @@ class Story:
     excerpt: str = ""
     published_at: datetime | None = None
     source: str = "rss"
+    source_pages: tuple[str, ...] = ()
 
     @property
     def canonical_url(self) -> str:

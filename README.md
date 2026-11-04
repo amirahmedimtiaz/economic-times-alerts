@@ -77,6 +77,8 @@ gh secret set OPENAI_API_KEY --repo OWNER/REPO
 
 Each command reads the value interactively. The Gmail and OpenAI secrets are never committed to the repository. Scheduled workflows can be delayed or skipped by GitHub. On Amir’s Mac, the `com.amir.economic-times-alerts-trigger` launch agent additionally dispatches the same GitHub workflow every five minutes while the Mac is awake and online. GitHub workflow concurrency serializes the senders and their shared state. This fallback cannot run while the Mac is asleep or offline, and neither trigger guarantees immediate delivery. Its log is `~/Library/Logs/economic-times-alerts-trigger.log`.
 
+Email subjects and headers identify the monitored listing pages where a story appeared; RSS-only stories use their article section. A story listed on multiple pages shows those page names. If no readable article text or excerpt is available, the alert says so and links to the article without an AI summary. A fixed `EMAIL_SUBJECT_PREFIX` overrides the automatic subject prefix.
+
 The program prioritizes the newest dated unseen stories ahead of older and undated backlog items. It sends one email per new story and marks an article as seen only after summarization and email delivery succeed. Failed items remain eligible for retry on the next poll.
 
 Example cron entry (run from this repository):
