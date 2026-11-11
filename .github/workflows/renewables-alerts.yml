@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   poll:
@@ -36,7 +37,13 @@ jobs:
       - name: Run regression tests before sending alerts
         run: python -m pytest -q
 
+      - name: Recover previous delivery checkpoint before sending
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m solar_alerts.recovery state.json
+
       - name: Poll, summarize, and email new stories
+        id: poll
         env:
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
@@ -54,6 +61,7 @@ jobs:
         run: python -m solar_alerts --once
 
       - name: Persist deduplication state
+        id: persist
         if: ${{ always() }}
         run: |
           if [ ! -f state.json ]; then
@@ -64,9 +72,9 @@ jobs:
           python -m solar_alerts.persistence state.json --branch main
 
       - name: Retain checkpoint if the run fails
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        if: ${{ failure() && steps.persist.outcome == 'failure' && (steps.poll.outcome == 'success' || steps.poll.outcome == 'failure') }}
+        uses: actions/upload-artifact@v6
         with:
-          name: alert-state-${{ github.run_id }}
+          name: alert-state-checkpoint
           path: state.json
           retention-days: 7

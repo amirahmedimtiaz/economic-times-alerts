@@ -141,6 +141,7 @@ def test_article_reads_original_publication_timestamp(metadata):
     '<script type="application/ld+json">invalid json</script>',
     '<script type="application/ld+json">{"@type":"NewsArticle","dateModified":"2026-11-11T22:55:00Z"}</script>',
     '<script type="application/ld+json">{"@type":"Organization","datePublished":"2026-11-11T22:55:00Z"}</script>',
+    '<div class="article_block" data-artdate="Nov 12, 2026, 04:25:00 AM IST"></div><script type="application/ld+json">{"@type":"NewsArticle","dateModified":"2026-11-11T22:55:00Z"}</script>',
 ])
 def test_article_does_not_invent_publication_timestamp(metadata):
     article = parse_article('<h1 class="artTitle">Title</h1><div class="artText">Body</div>' + metadata)

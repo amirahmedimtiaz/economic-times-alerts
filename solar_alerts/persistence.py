@@ -48,14 +48,11 @@ def persist_state(state_path: Path, *, repo_dir: Path | None = None, branch: str
             StateStore.from_json(state_path, _git(repo, "show", f"{head}:{relative}").stdout)
             if tracked else StateStore(state_path)
         )
-        merged = StateStore(
-            path=state_path,
-            initialized=local.initialized or remote.initialized,
-            seen_ids=local.seen_ids | remote.seen_ids,
-            stale_ids=local.stale_ids | remote.stale_ids,
-        )
-        if tracked and (merged.initialized, merged.seen_ids, merged.stale_ids) == (
-            remote.initialized, remote.seen_ids, remote.stale_ids,
+        merged = StateStore(state_path)
+        merged.merge_from(remote)
+        merged.merge_from(local)
+        if tracked and (merged.initialized, merged.seen_ids, merged.stale_ids, merged.last_attempted) == (
+            remote.initialized, remote.seen_ids, remote.stale_ids, remote.last_attempted,
         ):
             LOGGER.info("Remote state already contains all checkpoints")
             return False

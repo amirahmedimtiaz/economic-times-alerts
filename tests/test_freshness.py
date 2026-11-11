@@ -153,6 +153,32 @@ def test_stale_undated_article_is_not_fetched_again(poll, monkeypatch):
     assert not sent
 
 
+def test_unverified_link_cannot_starve_fresh_article_on_later_polls(poll, monkeypatch):
+    settings, run, sent, summarized, fetched = poll
+    monkeypatch.setenv("MAX_ARTICLES_PER_RUN", "1")
+    items = [story(1), story(2)]
+
+    def fetch(scraper, item):
+        fetched.append(item.key)
+        if item.key == "articleshow:2":
+            return parse_article('<h1 class="artTitle">Fresh</h1><meta property="article:published_time" content="2026-11-11T22:55:00Z"><div class="artText">Body</div>')
+        return ArticleContent(item.title, "", "Body")
+
+    monkeypatch.setattr("solar_alerts.main.EconomicTimesScraper.fetch_article", fetch)
+    monkeypatch.setattr("solar_alerts.main.EconomicTimesScraper.fetch_stories", lambda self: items)
+    capped = replace(settings, max_articles_per_run=1)
+    run_once(capped)
+    run_once(capped)
+    assert fetched == ["articleshow:1", "articleshow:2"]
+    assert [item.key for item in sent] == ["articleshow:2"]
+
+
+def test_page_update_timestamp_alone_does_not_verify_publication(poll):
+    settings, run, sent, summarized, fetched = poll
+    run([replace(story(1, NOW - timedelta(minutes=1)), source="page")])
+    assert not sent and not summarized
+
+
 def test_dry_run_explains_freshness_without_state_changes(poll, capsys):
     settings, run, sent, summarized, fetched = poll
     before = settings.state_file.read_bytes()
@@ -168,3 +194,11 @@ def test_invalid_freshness_setting_is_rejected(monkeypatch, tmp_path):
     monkeypatch.setenv("MAX_STORY_AGE_HOURS", "0")
     with pytest.raises(ConfigError, match="MAX_STORY_AGE_HOURS"):
         Settings.from_env(tmp_path).validate(require_email=False, require_openai=False)
+
+
+def test_notify_current_initializes_even_when_only_archives_exist(poll):
+    settings, run, sent, summarized, fetched = poll
+    settings.state_file.unlink()
+    run([story(1, NOW - timedelta(days=200))], notify_current=True)
+    run([story(2, NOW - timedelta(minutes=1))])
+    assert [item.key for item in sent] == ["articleshow:2"]

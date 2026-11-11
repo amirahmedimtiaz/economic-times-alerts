@@ -71,6 +71,9 @@ def run_once(
         state.save()
         LOGGER.info("Baselined %d current stories; no initial emails sent", len(stories))
         return RunResult(discovered=len(stories), candidates=0, sent=0, failed=0, baselined=True)
+    if not state.initialized:
+        state.initialize([])
+        state.save()
 
     candidates = []
     skipped = 0
@@ -91,9 +94,12 @@ def run_once(
     if skipped:
         state.save()
     candidates.sort(
-        key=lambda story: story.published_at or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda story: story.published_at if story.published_at is not None and story.published_at.tzinfo is not None else datetime.min.replace(tzinfo=timezone.utc),
         reverse=True,
     )
+    # Within a bounded batch, new/least recently attempted links take priority
+    # over retries so unavailable metadata cannot monopolize every poll.
+    candidates.sort(key=lambda story: state.last_attempted.get(story.key, ""))
     candidates = candidates[: min(settings.max_articles_per_run, limit or settings.max_articles_per_run)]
     LOGGER.info(
         "Discovery: total=%d candidates=%d skipped_stale=%d deferred=%d max_age_hours=%d",
@@ -119,10 +125,12 @@ def run_once(
     failed = 0
     for story in candidates:
         try:
+            state.record_attempt(story.key)
+            state.save()
             article = scraper.fetch_article(story)
             # Listings may display a modification time. Original publication
             # metadata takes precedence, including when a story is undated.
-            story = replace(story, published_at=article.published_at or story.published_at)
+            story = replace(story, published_at=article.published_at or (story.published_at if story.source == "rss" else None))
             status = _freshness(story.published_at, datetime.now(timezone.utc), settings.max_story_age_hours)
             if status == "stale":
                 state.mark_stale(story.key)

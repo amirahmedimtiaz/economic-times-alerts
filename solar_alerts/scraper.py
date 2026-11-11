@@ -238,7 +238,7 @@ class _ArticleParser(HTMLParser):
                 self.meta[key] = attr["content"]
         if tag == "div" and "article_block" in attr.get("class", "").split():
             self.author = clean_text(attr.get("data-authors", ""))
-            self.published_at_text = clean_text(attr.get("data-artidate") or attr.get("data-artdate", ""))
+            self.published_at_text = clean_text(attr.get("data-artidate", ""))
 
         classes = set(attr.get("class", "").split())
         if tag == "h1" and "artTitle" in classes:
