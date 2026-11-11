@@ -18,17 +18,23 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out source and alert state
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
+          # Resolve the branch when this serialized job starts, rather than
+          # reusing an event SHA whose delivery state may already be obsolete.
+          ref: main
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run regression tests before sending alerts
+        run: python -m pytest -q
 
       - name: Poll, summarize, and email new stories
         env:
@@ -44,6 +50,7 @@ jobs:
           SOURCE_INFRASTRUCTURE_PAGE_URL: https://economictimes.indiatimes.com/news/economy/infrastructure
           SOURCE_POLICY_PAGE_URL: https://economictimes.indiatimes.com/news/economy/policy
           STATE_FILE: state.json
+          MAX_STORY_AGE_HOURS: 24
         run: python -m solar_alerts --once
 
       - name: Persist deduplication state
@@ -54,9 +61,12 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f state.json
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "chore: update alert state"
-          git push
+          python -m solar_alerts.persistence state.json --branch main
+
+      - name: Retain checkpoint if the run fails
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: alert-state-${{ github.run_id }}
+          path: state.json
+          retention-days: 7

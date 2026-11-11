@@ -1,5 +1,10 @@
 from solar_alerts.state import StateStore
 
+import json
+import pytest
+
+from solar_alerts.state import StateError
+
 
 def test_state_baselines_and_persists(tmp_path) -> None:
     path = tmp_path / "state.json"
@@ -16,3 +21,11 @@ def test_state_baselines_and_persists(tmp_path) -> None:
     loaded.mark_seen("articleshow:3")
     loaded.save()
     assert StateStore.load(path).has_seen("articleshow:3")
+
+
+@pytest.mark.parametrize("payload", [[], None, {"initialized": "false", "seen_ids": []}, {"initialized": True, "seen_ids": "articleshow:1"}, {"initialized": True, "seen_ids": [None]}, {"version": 99, "initialized": True, "seen_ids": []}, {"initialized": True}, {"version": True, "seen_ids": []}])
+def test_malformed_state_fails_closed(tmp_path, payload):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps(payload))
+    with pytest.raises(StateError):
+        StateStore.load(path)

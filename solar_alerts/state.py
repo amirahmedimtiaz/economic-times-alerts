@@ -17,20 +17,42 @@ class StateStore:
     initialized: bool = False
     seen_ids: set[str] = field(default_factory=set)
     updated_at: str | None = None
+    stale_ids: set[str] = field(default_factory=set)
 
     @classmethod
     def load(cls, path: Path) -> "StateStore":
         if not path.exists():
             return cls(path=path)
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            content = path.read_text(encoding="utf-8")
+        except OSError as exc:
             raise StateError(f"Could not read state file {path}: {exc}") from exc
+        return cls.from_json(path, content)
+
+    @classmethod
+    def from_json(cls, path: Path, content: str) -> "StateStore":
+        try:
+            raw = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise StateError(f"Could not read state file {path}: {exc}") from exc
+        if (
+            not isinstance(raw, dict)
+            or type(raw.get("version", 1)) is not int
+            or raw.get("version", 1) not in (1, 2)
+            or not isinstance(raw.get("initialized", False), bool)
+            or (raw.get("initialized") is True and "seen_ids" not in raw)
+            or not isinstance(raw.get("seen_ids", []), list)
+            or not isinstance(raw.get("stale_ids", []), list)
+            or any(not isinstance(value, str) or not value for value in raw.get("seen_ids", []))
+            or any(not isinstance(value, str) or not value for value in raw.get("stale_ids", []))
+        ):
+            raise StateError(f"Invalid deduplication state in {path}")
         return cls(
             path=path,
             initialized=bool(raw.get("initialized", False)),
             seen_ids={str(value) for value in raw.get("seen_ids", [])},
             updated_at=raw.get("updated_at"),
+            stale_ids=set(raw.get("stale_ids", [])),
         )
 
     def initialize(self, ids: list[str]) -> None:
@@ -46,17 +68,29 @@ class StateStore:
     def has_seen(self, story_id: str) -> bool:
         return story_id in self.seen_ids
 
-    def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    def mark_stale(self, story_id: str) -> None:
+        """Remember a rejected archive without recording it as delivered."""
+        self.stale_ids.add(story_id)
+        self._touch()
+
+    def has_processed(self, story_id: str) -> bool:
+        return story_id in self.seen_ids or story_id in self.stale_ids
+
+    def to_json(self) -> str:
         payload = {
-            "version": 1,
+            "version": 2,
             "initialized": self.initialized,
             "seen_ids": sorted(self.seen_ids),
             "updated_at": self.updated_at,
+            "stale_ids": sorted(self.stale_ids),
         }
+        return json.dumps(payload, indent=2) + "\n"
+
+    def save(self) -> None:
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         try:
-            temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(self.to_json(), encoding="utf-8")
             os.replace(temporary, self.path)
         except OSError as exc:
             raise StateError(f"Could not write state file {self.path}: {exc}") from exc

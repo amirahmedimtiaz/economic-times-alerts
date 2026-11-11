@@ -57,6 +57,7 @@ class Settings:
     openai_api_key: str
     openai_model: str
     openai_reasoning_effort: str
+    max_story_age_hours: int = 24
 
     @classmethod
     def from_env(cls, base_dir: Path | None = None) -> "Settings":
@@ -109,6 +110,7 @@ class Settings:
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-6-luna").strip(),
             openai_reasoning_effort=os.getenv("OPENAI_REASONING_EFFORT", "medium").strip().lower(),
+            max_story_age_hours=_env_int("MAX_STORY_AGE_HOURS", 24),
         )
 
     def validate(self, *, require_email: bool = True, require_openai: bool = True) -> None:
@@ -119,6 +121,8 @@ class Settings:
             errors.append("POLL_INTERVAL_SECONDS must be greater than zero")
         if self.max_articles_per_run <= 0:
             errors.append("MAX_ARTICLES_PER_RUN must be greater than zero")
+        if self.max_story_age_hours <= 0:
+            errors.append("MAX_STORY_AGE_HOURS must be greater than zero")
         if self.article_max_chars < 500:
             errors.append("ARTICLE_MAX_CHARS must be at least 500")
         if require_email:

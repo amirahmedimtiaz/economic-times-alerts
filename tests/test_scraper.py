@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 
 from solar_alerts.scraper import EconomicTimesScraper, parse_article, parse_feed, parse_page
 
+import pytest
+
 
 RSS = b"""<?xml version="1.0"?><rss><channel>
 <item><title><![CDATA[New solar story]]></title>
@@ -122,3 +124,35 @@ def test_duplicate_story_preserves_listing_sources_and_rss_excerpt() -> None:
     story = next(s for s in scraper.fetch_stories() if s.key == 'articleshow:12345')
     assert story.source_pages == (solar, renewables)
     assert story.excerpt == 'Key detail.'
+
+
+@pytest.mark.parametrize("metadata", [
+    '<meta property="article:published_time" content="2026-11-12T04:25:00+05:30">',
+    '<meta itemprop="datePublished" content="2026-11-11T22:55:00Z">',
+    '<div class="article_block" data-artidate="Nov 12, 2026, 04:25:00 AM IST" data-artdate="Nov 13, 2026, 04:25:00 AM IST"></div>',
+    '<script type="application/ld+json">{"@type":"NewsArticle","datePublished":"2026-11-12T04:25:00+05:30","dateModified":"2026-11-13T04:25:00+05:30"}</script>',
+])
+def test_article_reads_original_publication_timestamp(metadata):
+    article = parse_article('<h1 class="artTitle">Title</h1><div class="artText">Body</div>' + metadata)
+    assert getattr(article, "published_at", None) == datetime(2026, 11, 11, 22, 55, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("metadata", [
+    '<script type="application/ld+json">invalid json</script>',
+    '<script type="application/ld+json">{"@type":"NewsArticle","dateModified":"2026-11-11T22:55:00Z"}</script>',
+    '<script type="application/ld+json">{"@type":"Organization","datePublished":"2026-11-11T22:55:00Z"}</script>',
+])
+def test_article_does_not_invent_publication_timestamp(metadata):
+    article = parse_article('<h1 class="artTitle">Title</h1><div class="artText">Body</div>' + metadata)
+    assert getattr(article, "published_at", None) is None
+
+
+def test_duplicate_page_anchor_keeps_later_publication_time():
+    html = '''
+      <a href="/industry/renewables/a/articleshow/1.cms">Thumbnail</a>
+      <a href="/industry/renewables/a/articleshow/1.cms">Headline</a>
+      <time datetime="2026-11-11T22:55:00Z"></time>
+    '''
+    stories = parse_page(html, page_url="https://economictimes.indiatimes.com/industry/renewables")
+    assert len(stories) == 1
+    assert stories[0].published_at == datetime(2026, 11, 11, 22, 55, tzinfo=timezone.utc)

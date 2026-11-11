@@ -6,6 +6,7 @@ from email.utils import parsedate_to_datetime
 from html import unescape
 from html.parser import HTMLParser
 import logging
+import json
 import re
 from typing import Iterable
 from urllib.parse import urljoin, urlsplit
@@ -97,12 +98,24 @@ def _parse_page_date(value: str) -> datetime | None:
     if not value:
         return None
     value = re.sub(r"\s+IST$", "", value, flags=re.IGNORECASE)
+    for fmt in ("%b %d, %Y, %I:%M %p", "%b %d, %Y, %I:%M:%S %p"):
+        try:
+            parsed = datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+        india_timezone = timezone(timedelta(hours=5, minutes=30))
+        return parsed.replace(tzinfo=india_timezone).astimezone(timezone.utc)
+    return None
+
+
+def _parse_publication_date(value: str) -> datetime | None:
+    value = clean_text(value)
     try:
-        parsed = datetime.strptime(value, "%b %d, %Y, %I:%M %p")
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
-        return None
-    india_timezone = timezone(timedelta(hours=5, minutes=30))
-    return parsed.replace(tzinfo=india_timezone).astimezone(timezone.utc)
+        return _parse_page_date(value)
+    # A timezone-free ISO value cannot establish an article's age reliably.
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
 
 
 class _PageLinkParser(HTMLParser):
@@ -122,7 +135,7 @@ class _PageLinkParser(HTMLParser):
             attr = {key.lower(): value or "" for key, value in attrs}
             self._time_active = True
             self._time_parts = []
-            self._time_value = attr.get("data-time", "")
+            self._time_value = attr.get("datetime") or attr.get("data-time", "")
             self._time_link_index = len(self.links) - 1
             return
         if tag != "a" or self._anchor is not None:
@@ -142,7 +155,7 @@ class _PageLinkParser(HTMLParser):
             if self._time_link_index is not None:
                 href, title, _ = self.links[self._time_link_index]
                 value = self._time_value or " ".join(self._time_parts)
-                self.links[self._time_link_index] = (href, title, _parse_page_date(value))
+                self.links[self._time_link_index] = (href, title, _parse_publication_date(value))
             self._time_active = False
             self._time_parts = []
             self._time_value = ""
@@ -166,25 +179,27 @@ def parse_page(content: str, *, page_url: str, limit: int = 50) -> list[Story]:
     parser.close()
 
     stories: list[Story] = []
-    seen: set[str] = set()
+    positions: dict[str, int] = {}
     for href, title, published_at in parser.links:
         url = canonicalize_url(urljoin(page_url, href))
         if not ARTICLE_LINK_RE.search(urlsplit(url).path):
             continue
-        if not ARTICLE_PATH_RE.match(urlsplit(url).path) or url in seen:
+        if not ARTICLE_PATH_RE.match(urlsplit(url).path):
             continue
-        seen.add(url)
-        stories.append(
-            Story(
+        story = Story(
                 title=title or url.rsplit("/", 1)[-1],
                 url=url,
                 published_at=published_at,
                 source="page",
                 source_pages=(page_url,),
             )
-        )
-        if len(stories) >= limit:
-            break
+        if story.key in positions:
+            index = positions[story.key]
+            if stories[index].published_at is None and published_at is not None:
+                stories[index] = replace(stories[index], published_at=published_at)
+        elif len(stories) < limit:
+            positions[story.key] = len(stories)
+            stories.append(story)
     return stories
 
 
@@ -202,6 +217,8 @@ class _ArticleParser(HTMLParser):
         self._title_active = False
         self._summary_depth = 0
         self._author_depth = 0
+        self.jsonld_blocks: list[str] = []
+        self._jsonld_parts: list[str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -211,15 +228,17 @@ class _ArticleParser(HTMLParser):
                 self._ignored_depth += 1
             return
         if tag in SKIP_TAGS:
+            if tag == "script" and attr.get("type", "").lower() == "application/ld+json":
+                self._jsonld_parts = []
             self._ignored_depth = 1
             return
         if tag == "meta":
-            key = (attr.get("name") or attr.get("property") or "").lower()
+            key = (attr.get("name") or attr.get("property") or attr.get("itemprop") or "").lower()
             if key and attr.get("content"):
                 self.meta[key] = attr["content"]
         if tag == "div" and "article_block" in attr.get("class", "").split():
             self.author = clean_text(attr.get("data-authors", ""))
-            self.published_at_text = clean_text(attr.get("data-artdate", ""))
+            self.published_at_text = clean_text(attr.get("data-artidate") or attr.get("data-artdate", ""))
 
         classes = set(attr.get("class", "").split())
         if tag == "h1" and "artTitle" in classes:
@@ -240,6 +259,9 @@ class _ArticleParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
         if self._ignored_depth:
+            if tag == "script" and self._jsonld_parts is not None:
+                self.jsonld_blocks.append("".join(self._jsonld_parts))
+                self._jsonld_parts = None
             self._ignored_depth -= 1
             return
         if self._body_depth:
@@ -254,6 +276,8 @@ class _ArticleParser(HTMLParser):
             self._title_active = False
 
     def handle_data(self, data: str) -> None:
+        if self._jsonld_parts is not None:
+            self._jsonld_parts.append(data)
         if self._ignored_depth:
             return
         if self._title_active:
@@ -262,6 +286,36 @@ class _ArticleParser(HTMLParser):
             self.summary_parts.append(data)
         if self._body_depth:
             self.body_blocks[-1].append(data)
+
+
+def _jsonld_publication_dates(blocks: list[str]) -> list[datetime]:
+    dates = []
+    for block in blocks:
+        try:
+            value = json.loads(block)
+        except (ValueError, TypeError):
+            continue
+        nodes = value if isinstance(value, list) else [value]
+        while nodes:
+            node = nodes.pop()
+            if not isinstance(node, dict):
+                continue
+            graph = node.get("@graph")
+            if isinstance(graph, list):
+                nodes.extend(graph)
+            types = node.get("@type", [])
+            if isinstance(types, str):
+                types = [types]
+            if not isinstance(types, list) or not any(
+                isinstance(kind, str) and (kind.rsplit("/", 1)[-1].endswith("Article") or kind == "BlogPosting")
+                for kind in types
+            ):
+                continue
+            published = node.get("datePublished")
+            parsed = _parse_publication_date(published) if isinstance(published, str) else None
+            if parsed is not None:
+                dates.append(parsed)
+    return dates
 
 
 def parse_article(content: str) -> ArticleContent:
@@ -285,12 +339,23 @@ def parse_article(content: str) -> ArticleContent:
         body = summary
     if not title and not body:
         raise ScraperError("Economic Times article did not contain readable content")
+    dates = _jsonld_publication_dates(parser.jsonld_blocks)
+    for value in (
+        parser.meta.get("article:published_time", ""),
+        parser.meta.get("datepublished", ""),
+        parser.meta.get("pubdate", ""),
+        parser.published_at_text,
+    ):
+        published = _parse_publication_date(value)
+        if published is not None:
+            dates.append(published)
     return ArticleContent(
         title=title,
         summary=summary,
         body=body,
         author=parser.author,
         published_at_text=parser.published_at_text,
+        published_at=min(dates, default=None),
     )
 
 
@@ -374,6 +439,6 @@ class EconomicTimesScraper:
         if len(article.body) > 0:
             return article
         if story.excerpt:
-            return ArticleContent(title=story.title, summary=story.excerpt, body=story.excerpt)
+            return replace(article, title=story.title, summary=story.excerpt, body=story.excerpt)
         LOGGER.warning("No readable article text or excerpt for %s; sending link only", story.key)
         return article

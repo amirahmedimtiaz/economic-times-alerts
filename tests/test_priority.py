@@ -14,7 +14,7 @@ def test_newest_dated_story_is_sent_before_undated_backlog(monkeypatch, tmp_path
     state.initialize(['articleshow:9'])
     state.save()
     older = Story('Undated', 'https://economictimes.indiatimes.com/industry/renewables/x/articleshow/1.cms')
-    latest = Story('New', 'https://economictimes.indiatimes.com/industry/renewables/y/articleshow/2.cms', published_at=datetime(2026, 11, 3, tzinfo=timezone.utc))
+    latest = Story('New', 'https://economictimes.indiatimes.com/industry/renewables/y/articleshow/2.cms', published_at=datetime.now(timezone.utc))
     monkeypatch.setattr('solar_alerts.main.EconomicTimesScraper.fetch_stories', lambda self: [latest, older])
     monkeypatch.setattr('solar_alerts.main.EconomicTimesScraper.fetch_article', lambda self, story: ArticleContent(story.title, '', 'body'))
     monkeypatch.setattr('solar_alerts.main.OpenAISummarizer.__post_init__', lambda self: None)

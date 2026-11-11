@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 import logging
 import sys
 import time
@@ -11,7 +11,7 @@ from .config import ConfigError, Settings
 from .mailer import GmailMailer
 from .scraper import EconomicTimesScraper, ScraperError
 from .state import StateError, StateStore
-from .summarizer import OpenAISummarizer, SummarizationError
+from .summarizer import OpenAISummarizer
 
 
 LOGGER = logging.getLogger(__name__)
@@ -24,6 +24,18 @@ class RunResult:
     sent: int
     failed: int
     baselined: bool = False
+    skipped: int = 0
+    deferred: int = 0
+
+
+def _freshness(published_at: datetime | None, now: datetime, max_age_hours: int) -> str:
+    if published_at is None or published_at.tzinfo is None:
+        return "unverified"
+    if published_at > now + timedelta(minutes=5):
+        return "future"
+    if published_at < now - timedelta(hours=max_age_hours):
+        return "stale"
+    return "recent"
 
 
 def run_once(
@@ -41,16 +53,16 @@ def run_once(
         additional_page_urls=(settings.source_power_page_url, settings.source_renewables_page_url, settings.source_infrastructure_page_url, settings.source_policy_page_url),
     )
     stories = scraper.fetch_stories()
-    if limit is not None:
-        stories = stories[:limit]
     if not stories:
         raise ScraperError("No stories were discovered")
+    now = datetime.now(timezone.utc)
 
     if dry_run:
         print(f"Discovered {len(stories)} in-scope stories.")
-        for story in stories:
+        for story in stories[:limit]:
             when = story.published_at.isoformat() if story.published_at else "unknown time"
-            print(f"- {when} | {story.title} | {story.canonical_url}")
+            status = _freshness(story.published_at, now, settings.max_story_age_hours)
+            print(f"- {status} | {when} | {story.title} | {story.canonical_url}")
         return RunResult(discovered=len(stories), candidates=0, sent=0, failed=0)
 
     state = StateStore.load(settings.state_file)
@@ -60,22 +72,38 @@ def run_once(
         LOGGER.info("Baselined %d current stories; no initial emails sent", len(stories))
         return RunResult(discovered=len(stories), candidates=0, sent=0, failed=0, baselined=True)
 
-    candidates = [story for story in stories if not state.has_seen(story.key)]
+    candidates = []
+    skipped = 0
+    deferred = 0
+    for story in stories:
+        if state.has_processed(story.key):
+            continue
+        status = _freshness(story.published_at, now, settings.max_story_age_hours)
+        if status == "stale":
+            state.mark_stale(story.key)
+            skipped += 1
+            LOGGER.info("Skipped stale %s published=%s", story.key, story.published_at.isoformat())
+        elif status == "future":
+            deferred += 1
+            LOGGER.warning("Deferred future-dated %s published=%s", story.key, story.published_at.isoformat())
+        else:
+            candidates.append(story)
+    if skipped:
+        state.save()
     candidates.sort(
         key=lambda story: story.published_at or datetime.min.replace(tzinfo=timezone.utc),
         reverse=True,
     )
-    candidates = candidates[: settings.max_articles_per_run]
+    candidates = candidates[: min(settings.max_articles_per_run, limit or settings.max_articles_per_run)]
+    LOGGER.info(
+        "Discovery: total=%d candidates=%d skipped_stale=%d deferred=%d max_age_hours=%d",
+        len(stories), len(candidates), skipped, deferred, settings.max_story_age_hours,
+    )
     if not candidates:
         LOGGER.info("No new stories")
-        return RunResult(discovered=len(stories), candidates=0, sent=0, failed=0)
+        return RunResult(discovered=len(stories), candidates=0, sent=0, failed=0, skipped=skipped, deferred=deferred)
 
-    summarizer = OpenAISummarizer(
-        api_key=settings.openai_api_key,
-        model=settings.openai_model,
-        reasoning_effort=settings.openai_reasoning_effort,
-        max_input_chars=settings.article_max_chars,
-    )
+    summarizer = None
     mailer = GmailMailer(
         sender=settings.email_sender,
         password=settings.email_password,
@@ -92,9 +120,34 @@ def run_once(
     for story in candidates:
         try:
             article = scraper.fetch_article(story)
-            summary = (summarizer.summarize(story, article) if (article.body or article.summary or story.excerpt).strip()
-                       else "Article text and summary are unavailable. Open the article link for details.")
+            # Listings may display a modification time. Original publication
+            # metadata takes precedence, including when a story is undated.
+            story = replace(story, published_at=article.published_at or story.published_at)
+            status = _freshness(story.published_at, datetime.now(timezone.utc), settings.max_story_age_hours)
+            if status == "stale":
+                state.mark_stale(story.key)
+                state.save()
+                skipped += 1
+                LOGGER.info("Skipped stale %s after article verification published=%s", story.key, story.published_at.isoformat())
+                continue
+            if status in {"unverified", "future"}:
+                deferred += 1
+                LOGGER.warning("Deferred %s: publication time %s", story.key, status)
+                continue
+            if (article.body or article.summary or story.excerpt).strip():
+                if summarizer is None:
+                    summarizer = OpenAISummarizer(
+                        api_key=settings.openai_api_key,
+                        model=settings.openai_model,
+                        reasoning_effort=settings.openai_reasoning_effort,
+                        max_input_chars=settings.article_max_chars,
+                    )
+                summary = summarizer.summarize(story, article)
+            else:
+                summary = "Article text and summary are unavailable. Open the article link for details."
             mailer.send_alert(story, summary)
+        except StateError:
+            raise
         except Exception as exc:
             failed += 1
             LOGGER.exception("Could not process %s: %s", story.key, exc)
@@ -102,8 +155,9 @@ def run_once(
         state.mark_seen(story.key)
         state.save()
         sent += 1
-        LOGGER.info("Sent alert for %s", story.title)
-    return RunResult(discovered=len(stories), candidates=len(candidates), sent=sent, failed=failed)
+        LOGGER.info("Sent alert for %s published=%s", story.title, story.published_at.isoformat())
+    LOGGER.info("Poll complete: sent=%d failed=%d skipped_stale=%d deferred=%d", sent, failed, skipped, deferred)
+    return RunResult(discovered=len(stories), candidates=len(candidates), sent=sent, failed=failed, skipped=skipped, deferred=deferred)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -113,8 +167,8 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--once", action="store_true", help="Run one poll (the default)")
     parser.add_argument("--interval", type=int, help="Override POLL_INTERVAL_SECONDS in watch mode")
     parser.add_argument("--dry-run", action="store_true", help="Fetch and print stories without OpenAI, email, or state changes")
-    parser.add_argument("--notify-current", action="store_true", help="Send alerts for current stories on an uninitialized state file")
-    parser.add_argument("--limit", type=int, help="Inspect at most this many discovered stories")
+    parser.add_argument("--notify-current", action="store_true", help="Send eligible recent stories on an uninitialized state file")
+    parser.add_argument("--limit", type=int, help="Cap alerts after freshness filtering, or listings printed in a dry run")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser
 

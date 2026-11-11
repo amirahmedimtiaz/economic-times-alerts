@@ -50,3 +50,4 @@ class ArticleContent:
     body: str
     author: str = ""
     published_at_text: str = ""
+    published_at: datetime | None = None

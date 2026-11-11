@@ -48,7 +48,9 @@ First, verify discovery without sending email or changing state:
 python -m solar_alerts --dry-run
 ```
 
-The first real run creates `state.json` and baselines the current listings without sending the existing stories. This prevents a first-run inbox flood. To intentionally alert on the current stories, use `--notify-current`. When a new listing is added to an already initialized deployment, its currently listed stories are eligible for alerts, subject to the per-run limit and deduplication.
+The first real run creates `state.json` and baselines the current listings without sending the existing stories. This prevents a first-run inbox flood. To alert on the current **recent** stories, use `--notify-current`; it does not bypass the freshness check. New listings on an existing deployment follow the same rules.
+
+An unseen article must have a verified publication time within the last 24 hours (`MAX_STORY_AGE_HOURS`). Older articles are excluded before OpenAI or email is called, and recorded separately in `stale_ids`. Article metadata (`datePublished`, original ET article date, or publication metadata) takes precedence over a listing's date, so a recent modification cannot revive an archive article. Undated links are checked against the article itself; if publication still cannot be established, or is more than five minutes in the future, the story is deferred without being marked delivered. A dry run labels listing timestamps as `recent`, `stale`, `future`, or `unverified`; it does not fetch article metadata or send anything.
 
 For a single poll, suitable for cron:
 
@@ -64,7 +66,7 @@ python -m solar_alerts --watch --interval 900
 
 ## GitHub Actions deployment
 
-The repository includes `.github/workflows/renewables-alerts.yml`, which requests a poll every 5 minutes and can also be started manually from the Actions tab. It stores `state.json` in the repository after each run so duplicate emails are suppressed across ephemeral GitHub-hosted runners.
+The repository includes `.github/workflows/renewables-alerts.yml`, which requests a poll every 5 minutes and can also be started manually from the Actions tab. It always checks out the latest `main` after acquiring the concurrency slot, then runs the regression suite before sending. It stores `state.json` in the repository after each run so duplicate emails are suppressed across ephemeral GitHub-hosted runners.
 
 Add these repository secrets before enabling the workflow:
 
@@ -79,7 +81,9 @@ Each command reads the value interactively. The Gmail and OpenAI secrets are nev
 
 Email subjects and headers identify the monitored listing pages where a story appeared; RSS-only stories use their article section. A story listed on multiple pages shows those page names. If no readable article text or excerpt is available, the alert says so and links to the article without an AI summary. A fixed `EMAIL_SUBJECT_PREFIX` overrides the automatic subject prefix.
 
-The program prioritizes the newest dated unseen stories ahead of older and undated backlog items. It sends one email per new story and marks an article as seen only after summarization and email delivery succeed. Failed items remain eligible for retry on the next poll.
+The program prioritizes recent dated unseen stories ahead of undated links requiring verification. `MAX_ARTICLES_PER_RUN` and `--limit` apply after filtering known stale items. It sends one email per eligible story and marks an article as seen only after email delivery succeeds. Failed items remain eligible for retry while they are within the freshness window. Logs include publication timestamps and counts for delivered, stale, deferred, and failed articles.
+
+State persistence unions delivered and stale IDs with the latest remote state and commits only `state.json` on top of the latest remote tree. A rejected push is retried after refetching and merging; concurrent source changes are preserved. Version 1 state is accepted and upgraded when saved. Malformed state fails closed. A failed workflow retains its local checkpoint as a seven-day artifact. If persistence fails entirely, recover that checkpoint with `python -m solar_alerts.persistence path/to/state.json --branch main` from this repository before another sending run. SMTP delivery and Git persistence are separate operations: an interruption after SMTP accepts an email but before the checkpoint reaches Git can still cause a duplicate.
 
 Example cron entry (run from this repository):
 
@@ -94,6 +98,7 @@ See `.env.example` for all optional settings. Important defaults are:
 - `SOURCE_PAGE_URL`, `SOURCE_POWER_PAGE_URL`, `SOURCE_RENEWABLES_PAGE_URL`, `SOURCE_INFRASTRUCTURE_PAGE_URL`, and `SOURCE_POLICY_PAGE_URL` select the five monitored pages.
 - `POLL_INTERVAL_SECONDS=900`
 - `MAX_ARTICLES_PER_RUN=10`
+- `MAX_STORY_AGE_HOURS=24` (must be positive; applies to retries and `--notify-current` too)
 - `ARTICLE_MAX_CHARS=18000`
 - `STATE_FILE=state.json`
 - `EMAIL_SMTP_HOST=smtp.gmail.com`

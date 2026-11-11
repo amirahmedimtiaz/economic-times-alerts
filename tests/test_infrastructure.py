@@ -1,6 +1,7 @@
 from solar_alerts.config import Settings
 from solar_alerts.main import run_once
 from solar_alerts.scraper import EconomicTimesScraper
+from datetime import datetime, timezone
 
 
 def test_default_poll_discovers_infrastructure_listing(monkeypatch, tmp_path, capsys):
@@ -51,7 +52,7 @@ def test_unreadable_article_sends_link_only_without_summarizer(monkeypatch, tmp_
     from solar_alerts.mailer import GmailMailer
     from solar_alerts.summarizer import OpenAISummarizer
     from solar_alerts.state import StateStore
-    story = Story('Road', 'https://economictimes.indiatimes.com/news/economy/infrastructure/x/articleshow/1.cms')
+    story = Story('Road', 'https://economictimes.indiatimes.com/news/economy/infrastructure/x/articleshow/1.cms', published_at=datetime.now(timezone.utc))
     monkeypatch.setattr(EconomicTimesScraper, 'fetch_stories', lambda self: [story])
     monkeypatch.setattr(EconomicTimesScraper, 'fetch_article', lambda self, story: ArticleContent(story.title, '', ''))
     monkeypatch.setattr(OpenAISummarizer, '__post_init__', lambda self: None)
