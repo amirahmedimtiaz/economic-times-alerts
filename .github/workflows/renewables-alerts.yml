@@ -37,6 +37,11 @@ jobs:
       - name: Run regression tests before sending alerts
         run: python -m pytest -q
 
+      - name: Configure state commit author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Recover previous delivery checkpoint before sending
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -67,8 +72,6 @@ jobs:
           if [ ! -f state.json ]; then
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           python -m solar_alerts.persistence state.json --branch main
 
       - name: Retain checkpoint if the run fails
