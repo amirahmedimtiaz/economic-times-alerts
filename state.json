@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "initialized": true,
   "seen_ids": [
     "articleshow:100529998",
@@ -503,7 +503,10 @@
     "articleshow:135739839",
     "articleshow:135740558",
     "articleshow:135747638",
-    "articleshow:135747686"
+    "articleshow:135747686",
+    "articleshow:135760533"
   ],
-  "updated_at": "2026-11-11T19:15:26.534682+00:00"
+  "updated_at": "2026-11-12T08:31:18.094287+00:00",
+  "stale_ids": [],
+  "last_attempted": {}
 }
